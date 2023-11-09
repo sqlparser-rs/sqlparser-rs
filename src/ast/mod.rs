@@ -39,8 +39,8 @@ pub use self::ddl::{
 };
 pub use self::operator::{BinaryOperator, UnaryOperator};
 pub use self::query::{
-    Cte, Distinct, ExceptSelectItem, ExcludeSelectItem, Fetch, ForClause, ForJson, ForXml,
-    GroupByExpr, IdentWithAlias, Join, JoinConstraint, JoinOperator, JsonTableColumn,
+    ConnectBy, Cte, Distinct, ExceptSelectItem, ExcludeSelectItem, Fetch, ForClause, ForJson,
+    ForXml, GroupByExpr, IdentWithAlias, Join, JoinConstraint, JoinOperator, JsonTableColumn,
     JsonTableColumnErrorHandling, LateralView, LockClause, LockType, NamedWindowDefinition,
     NonBlock, Offset, OffsetRows, OrderByExpr, Query, RenameSelectItem, ReplaceSelectElement,
     ReplaceSelectItem, Select, SelectInto, SelectItem, SetExpr, SetOperator, SetQuantifier, Table,
@@ -713,6 +713,8 @@ pub enum Expr {
     /// Qualified wildcard, e.g. `alias.*` or `schema.table.*`.
     /// (Same caveats apply to `QualifiedWildcard` as to `Wildcard`.)
     QualifiedWildcard(ObjectName),
+    /// A reference to the prior level in a CONNECT BY clause.
+    Prior(Box<Expr>),
 }
 
 impl fmt::Display for CastFormat {
@@ -1174,6 +1176,7 @@ impl fmt::Display for Expr {
 
                 Ok(())
             }
+            Expr::Prior(expr) => write!(f, "PRIOR {expr}"),
         }
     }
 }
