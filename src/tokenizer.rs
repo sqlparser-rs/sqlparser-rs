@@ -627,11 +627,11 @@ impl<'a> Tokenizer<'a> {
                     chars.next(); // consume
                     match chars.peek() {
                         Some('\'') => {
-                            let s = self.tokenize_quoted_string(chars, '\'')?;
+                            let s = self.tokenize_quoted_string(chars, '\'', true)?;
                             Ok(Some(Token::SingleQuotedByteStringLiteral(s)))
                         }
                         Some('\"') => {
-                            let s = self.tokenize_quoted_string(chars, '\"')?;
+                            let s = self.tokenize_quoted_string(chars, '\"', true)?;
                             Ok(Some(Token::DoubleQuotedByteStringLiteral(s)))
                         }
                         _ => {
@@ -646,11 +646,11 @@ impl<'a> Tokenizer<'a> {
                     chars.next(); // consume
                     match chars.peek() {
                         Some('\'') => {
-                            let s = self.tokenize_quoted_string(chars, '\'')?;
+                            let s = self.tokenize_quoted_string(chars, '\'', true)?;
                             Ok(Some(Token::RawStringLiteral(s)))
                         }
                         Some('\"') => {
-                            let s = self.tokenize_quoted_string(chars, '\"')?;
+                            let s = self.tokenize_quoted_string(chars, '\"', true)?;
                             Ok(Some(Token::RawStringLiteral(s)))
                         }
                         _ => {
@@ -666,7 +666,7 @@ impl<'a> Tokenizer<'a> {
                     match chars.peek() {
                         Some('\'') => {
                             // N'...' - a <national character string literal>
-                            let s = self.tokenize_quoted_string(chars, '\'')?;
+                            let s = self.tokenize_quoted_string(chars, '\'', true)?;
                             Ok(Some(Token::NationalStringLiteral(s)))
                         }
                         _ => {
@@ -700,7 +700,7 @@ impl<'a> Tokenizer<'a> {
                     match chars.peek() {
                         Some('\'') => {
                             // X'...' - a <binary string literal>
-                            let s = self.tokenize_quoted_string(chars, '\'')?;
+                            let s = self.tokenize_quoted_string(chars, '\'', true)?;
                             Ok(Some(Token::HexStringLiteral(s)))
                         }
                         _ => {
@@ -712,7 +712,11 @@ impl<'a> Tokenizer<'a> {
                 }
                 // single quoted string
                 '\'' => {
-                    let s = self.tokenize_quoted_string(chars, '\'')?;
+                    let s = self.tokenize_quoted_string(
+                        chars,
+                        '\'',
+                        self.dialect.supports_string_literal_backslash_escape(),
+                    )?;
 
                     Ok(Some(Token::SingleQuotedString(s)))
                 }
@@ -720,7 +724,11 @@ impl<'a> Tokenizer<'a> {
                 '\"' if !self.dialect.is_delimited_identifier_start(ch)
                     && !self.dialect.is_identifier_start(ch) =>
                 {
-                    let s = self.tokenize_quoted_string(chars, '"')?;
+                    let s = self.tokenize_quoted_string(
+                        chars,
+                        '"',
+                        self.dialect.supports_string_literal_backslash_escape(),
+                    )?;
 
                     Ok(Some(Token::DoubleQuotedString(s)))
                 }
@@ -1211,15 +1219,17 @@ impl<'a> Tokenizer<'a> {
         &self,
         chars: &mut State,
         quote_style: char,
+        allow_escape: bool,
     ) -> Result<String, TokenizerError> {
         let mut s = String::new();
         let error_loc = chars.location();
 
         chars.next(); // consume the opening quote
 
+        let mut escape_on = false;
         while let Some(&ch) = chars.peek() {
             match ch {
-                char if char == quote_style => {
+                char if !escape_on && char == quote_style => {
                     chars.next(); // consume
                     if chars.peek().map(|c| *c == quote_style).unwrap_or(false) {
                         s.push(ch);
@@ -1235,6 +1245,11 @@ impl<'a> Tokenizer<'a> {
                 '\\' => {
                     // consume
                     chars.next();
+
+                    if allow_escape {
+                        escape_on = !escape_on;
+                    }
+
                     // slash escaping is specific to MySQL dialect.
                     if dialect_of!(self is MySqlDialect) {
                         if let Some(next) = chars.peek() {
@@ -1258,6 +1273,7 @@ impl<'a> Tokenizer<'a> {
                                 s.push(n);
                                 chars.next(); // consume next
                             }
+                            escape_on = false;
                         }
                     } else {
                         s.push(ch);
@@ -1266,6 +1282,7 @@ impl<'a> Tokenizer<'a> {
                 _ => {
                     chars.next(); // consume
                     s.push(ch);
+                    escape_on = false;
                 }
             }
         }
@@ -1506,7 +1523,7 @@ impl<'a: 'b, 'b> Unescape<'a, 'b> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dialect::{ClickHouseDialect, MsSqlDialect};
+    use crate::dialect::{BigQueryDialect, ClickHouseDialect, MsSqlDialect};
 
     #[test]
     fn tokenizer_error_impl() {
@@ -2305,5 +2322,43 @@ mod tests {
         );
         check_unescape(r"Hello\0", None);
         check_unescape(r"Hello\xCADRust", None);
+    }
+
+    #[test]
+    fn tokenize_quoted_string_escape() {
+        for (sql, expected) in [
+            (r#"'%a\'%b'"#, r#"%a\'%b"#),
+            (r#"'a\'\'b\'c\'d'"#, r#"a\'\'b\'c\'d"#),
+            (r#"'\\'"#, r#"\\"#),
+            (r#"'\\a\\b\'c'"#, r#"\\a\\b\'c"#),
+            (r#"'\'abcd'"#, r#"\'abcd"#),
+            (r#"'''a''b'"#, r#"'a'b"#),
+        ] {
+            let dialect = BigQueryDialect {};
+            let tokens = Tokenizer::new(&dialect, sql).tokenize().unwrap();
+
+            let expected = vec![Token::SingleQuotedString(expected.to_string())];
+
+            compare(expected, tokens);
+        }
+
+        for sql in [r#"'\'"#, r#"'ab\'"#] {
+            let dialect = BigQueryDialect {};
+            let mut tokenizer = Tokenizer::new(&dialect, sql);
+            assert_eq!(
+                "Unterminated string literal",
+                tokenizer.tokenize().unwrap_err().message.as_str(),
+            );
+        }
+
+        // Non-escape dialect
+        for (sql, expected) in [(r#"'\'"#, r#"\"#), (r#"'ab\'"#, r#"ab\"#)] {
+            let dialect = GenericDialect {};
+            let tokens = Tokenizer::new(&dialect, sql).tokenize().unwrap();
+
+            let expected = vec![Token::SingleQuotedString(expected.to_string())];
+
+            compare(expected, tokens);
+        }
     }
 }
