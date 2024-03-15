@@ -733,6 +733,10 @@ pub enum Expr {
     ///
     /// See <https://docs.snowflake.com/en/sql-reference/constructs/where#joins-in-the-where-clause>.
     OuterJoin(Box<Expr>),
+    ColumnWithDataType {
+        columns: Box<Expr>,
+        data_type: DataType,
+    },
 }
 
 impl fmt::Display for CastFormat {
@@ -1196,6 +1200,9 @@ impl fmt::Display for Expr {
             }
             Expr::OuterJoin(expr) => {
                 write!(f, "{expr} (+)")
+            }
+            Expr::ColumnWithDataType { columns, data_type } => {
+                write!(f, "{{{}:{}}}", columns, data_type)
             }
         }
     }
