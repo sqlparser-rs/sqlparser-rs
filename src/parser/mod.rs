@@ -855,9 +855,14 @@ impl<'a> Parser<'a> {
     }
     pub fn parse_column_with_data_type(&mut self) -> Result<Expr, ParserError> {
         self.expect_token(&Token::LBrace)?;
-        let column_with_data_type = self.parse_expr()?;
+        let name = self.parse_identifier(false)?;
+        self.expect_token(&Token::Colon)?;
+        let data_type = self.parse_data_type()?;
         self.expect_token(&Token::RBrace)?;
-        Ok(column_with_data_type)
+        Ok(Expr::ParameterizedViewArg {
+            columns: (name),
+            data_type: (data_type),
+        })
     }
     /// Parse an expression prefix
     pub fn parse_prefix(&mut self) -> Result<Expr, ParserError> {
@@ -866,8 +871,11 @@ impl<'a> Parser<'a> {
             return prefix;
         }
         // ClickHouse support using {column:Datatype} format in its creation of parametrised views
-        if dialect_of!(self is ClickHouseDialect) && self.peek_token().token == Token::LBrace {
-            return self.parse_column_with_data_type();
+        match self.peek_token().token {
+            Token::LBrace if dialect_of!(self is ClickHouseDialect) => {
+                return self.parse_column_with_data_type();
+            }
+            _ => {}
         }
         // PostgreSQL allows any string literal to be preceded by a type name, indicating that the
         // string literal represents a literal of that type. Some examples:
@@ -2416,8 +2424,8 @@ impl<'a> Parser<'a> {
             self.parse_map_access(expr)
         } else if Token::Colon == tok {
             if dialect_of!(self is ClickHouseDialect) && self.index() > 0 {
-                return Ok(Expr::ColumnWithDataType {
-                    columns: Box::new(expr),
+                return Ok(Expr::ParameterizedViewArg {
+                    columns: Ident::new(expr.to_string()),
                     data_type: self.parse_data_type()?,
                 });
             }
