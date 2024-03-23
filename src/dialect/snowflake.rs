@@ -46,6 +46,10 @@ impl Dialect for SnowflakeDialect {
             || ch == '_'
     }
 
+    fn supports_string_literal_backslash_escape(&self) -> bool {
+        true
+    }
+
     fn supports_within_after_array_aggregation(&self) -> bool {
         true
     }
