@@ -502,9 +502,8 @@ fn parse_create_table_auto_increment() {
 
 #[test]
 fn parse_create_table_unique_key() {
-    let sql = "CREATE TABLE foo (id INT PRIMARY KEY AUTO_INCREMENT, bar INT NOT NULL, UNIQUE KEY bar_key (bar))";
-    let canonical = "CREATE TABLE foo (id INT PRIMARY KEY AUTO_INCREMENT, bar INT NOT NULL, CONSTRAINT bar_key UNIQUE (bar))";
-    match mysql().one_statement_parses_to(sql, canonical) {
+    let sql = "CREATE TABLE foo (id INT PRIMARY KEY AUTO_INCREMENT, bar INT NOT NULL, CONSTRAINT bar_key UNIQUE KEY (bar))";
+    match mysql().one_statement_parses_to(sql, "") {
         Statement::CreateTable {
             name,
             columns,
@@ -515,8 +514,12 @@ fn parse_create_table_unique_key() {
             assert_eq!(
                 vec![TableConstraint::Unique {
                     name: Some(Ident::new("bar_key")),
+                    index_name: None,
+                    index_type: None,
                     columns: vec![Ident::new("bar")],
                     is_primary: false,
+                    index_type_display: KeyOrIndexDisplay::Key,
+                    index_options: vec![],
                     characteristics: None,
                 }],
                 constraints
@@ -558,6 +561,69 @@ fn parse_create_table_unique_key() {
         }
         _ => unreachable!(),
     }
+}
+
+#[test]
+fn parse_create_table_unique_key_with_index_options() {
+    let sql = "CREATE TABLE foo (bar INT, var INT, CONSTRAINT constr UNIQUE INDEX index_name (bar, var) USING HASH COMMENT 'yes, ' USING BTREE COMMENT 'MySQL allows')";
+    match mysql_and_generic().one_statement_parses_to(sql, "") {
+        Statement::CreateTable {
+            name, constraints, ..
+        } => {
+            assert_eq!(name.to_string(), "foo");
+            assert_eq!(
+                vec![TableConstraint::Unique {
+                    name: Some(Ident::new("constr")),
+                    index_name: Some(Ident::new("index_name")),
+                    index_type: None,
+                    columns: vec![Ident::new("bar"), Ident::new("var")],
+                    is_primary: false,
+                    index_type_display: KeyOrIndexDisplay::Index,
+                    index_options: vec![
+                        IndexOption::Using(IndexType::Hash),
+                        IndexOption::Comment("yes, ".into()),
+                        IndexOption::Using(IndexType::BTree),
+                        IndexOption::Comment("MySQL allows".into())
+                    ],
+                    characteristics: None,
+                }],
+                constraints
+            );
+        }
+        _ => unreachable!(),
+    }
+
+    mysql_and_generic().verified_stmt(sql);
+}
+
+#[test]
+fn parse_create_table_unique_key_with_index_type() {
+    let sql = "CREATE TABLE foo (bar INT, UNIQUE index_name USING BTREE (bar) USING HASH)";
+    match mysql_and_generic().one_statement_parses_to(sql, "") {
+        Statement::CreateTable {
+            name, constraints, ..
+        } => {
+            assert_eq!(name.to_string(), "foo");
+            assert_eq!(
+                vec![TableConstraint::Unique {
+                    name: None,
+                    index_name: Some(Ident::new("index_name")),
+                    index_type: Some(IndexType::BTree),
+                    columns: vec![Ident::new("bar")],
+                    is_primary: false,
+                    index_type_display: KeyOrIndexDisplay::None,
+                    index_options: vec![IndexOption::Using(IndexType::Hash),],
+                    characteristics: None,
+                }],
+                constraints
+            );
+        }
+        _ => unreachable!(),
+    }
+    mysql_and_generic().verified_stmt(sql);
+
+    let sql = "CREATE TABLE foo (bar INT, PRIMARY KEY index_name USING BTREE (bar) USING HASH)";
+    mysql_and_generic().verified_stmt(sql);
 }
 
 #[test]
@@ -2142,6 +2208,15 @@ fn parse_create_table_with_index_definition() {
         "CREATE TABLE tb (id INT, INDEX (c1, c2, c3, c4,c5))",
         "CREATE TABLE tb (id INT, INDEX (c1, c2, c3, c4, c5))",
     );
+}
+
+#[test]
+fn parse_create_table_unallow_constraint_then_index() {
+    let sql = "CREATE TABLE foo (bar INT, CONSTRAINT constr INDEX index (bar))";
+    assert!(mysql_and_generic().parse_sql_statements(sql).is_err());
+
+    let sql = "CREATE TABLE foo (bar INT, INDEX index (bar))";
+    assert!(mysql_and_generic().parse_sql_statements(sql).is_ok());
 }
 
 #[test]
