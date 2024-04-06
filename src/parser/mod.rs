@@ -7199,6 +7199,16 @@ impl<'a> Parser<'a> {
         } else if self.consume_token(&Token::LParen) {
             // CTEs are not allowed here, but the parser currently accepts them
             let subquery = self.parse_query()?;
+
+            let is_generic = dialect_of!(self is GenericDialect);
+            if !is_generic {
+                if let SetExpr::Values(_) = *subquery.body {
+                    return Err(ParserError::ParserError(
+                        "VALUES is not a recognized subquery".to_string(),
+                    ));
+                }
+            }
+
             self.expect_token(&Token::RParen)?;
             SetExpr::Query(Box::new(subquery))
         } else if self.parse_keyword(Keyword::VALUES) {
@@ -8473,10 +8483,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let columns = self.parse_parenthesized_column_list(Optional, is_mysql)?;
 
-                    let partitioned = self.parse_insert_partition()?;
-
-                    // Hive allows you to specify columns after partitions as well if you want.
-                    let after_columns = self.parse_parenthesized_column_list(Optional, false)?;
+                    let (partitioned, after_columns) = self.parse_insert_partition()?;
 
                     let source = Some(Box::new(self.parse_query()?));
 
@@ -8570,14 +8577,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse_insert_partition(&mut self) -> Result<Option<Vec<Expr>>, ParserError> {
+    pub fn parse_insert_partition(
+        &mut self,
+    ) -> Result<(Option<Vec<Expr>>, Vec<Ident>), ParserError> {
         if self.parse_keyword(Keyword::PARTITION) {
             self.expect_token(&Token::LParen)?;
-            let partition_cols = Some(self.parse_comma_separated(Parser::parse_expr)?);
+            let partition_cols = self.parse_comma_separated(Parser::parse_expr)?;
             self.expect_token(&Token::RParen)?;
-            Ok(partition_cols)
+
+            // Hive allows you to specify columns after partitions as well if you want.
+            let after_columns = self.parse_parenthesized_column_list(Optional, false)?;
+
+            Ok((Some(partition_cols), after_columns))
         } else {
-            Ok(None)
+            Ok((None, vec![]))
         }
     }
 
@@ -10243,7 +10256,35 @@ mod tests {
     fn test_replace_into_select() {
         let sql = r#"REPLACE INTO t1 (a, b, c) (SELECT * FROM t2)"#;
 
-        assert!(Parser::parse_sql(&GenericDialect {}, sql).is_err());
+        assert!(Parser::parse_sql(&GenericDialect {}, sql).is_ok());
+    }
+
+    #[test]
+    fn test_insert_into_select() {
+        let sql = r#"INSERT INTO t1 (a, b, c) (SELECT * FROM t2)"#;
+
+        assert!(Parser::parse_sql(&GenericDialect {}, sql).is_ok());
+    }
+
+    #[test]
+    fn test_insert_into_values() {
+        let sql = r#"INSERT INTO t1 (a) VALUES(1)"#;
+
+        assert!(Parser::parse_sql(&GenericDialect {}, sql).is_ok());
+    }
+
+    #[test]
+    fn test_insert_into_values_wrapped() {
+        let sql = r#"INSERT INTO t1 (a) (VALUES(1))"#;
+
+        assert!(Parser::parse_sql(&GenericDialect {}, sql).is_ok());
+    }
+
+    #[test]
+    fn test_insert_into_values_wrapped_not_generic() {
+        let sql = r#"INSERT INTO t1 (a) (VALUES(1))"#;
+
+        assert!(Parser::parse_sql(&MySqlDialect {}, sql).is_err());
     }
 
     #[test]
