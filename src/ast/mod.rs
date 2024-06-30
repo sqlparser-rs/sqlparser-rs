@@ -2210,7 +2210,17 @@ pub enum Statement {
     DropFunction {
         if_exists: bool,
         /// One or more function to drop
-        func_desc: Vec<DropFunctionDesc>,
+        func_desc: Vec<DropFuncDesc>,
+        /// `CASCADE` or `RESTRICT`
+        option: Option<ReferentialAction>,
+    },
+    /// ```sql
+    /// DROP PROCEDURE
+    /// ```
+    DropProcedure {
+        if_exists: bool,
+        /// One or more function to drop
+        proc_desc: Vec<DropFuncDesc>,
         /// `CASCADE` or `RESTRICT`
         option: Option<ReferentialAction>,
     },
@@ -3638,6 +3648,22 @@ impl fmt::Display for Statement {
                     "DROP FUNCTION{} {}",
                     if *if_exists { " IF EXISTS" } else { "" },
                     display_comma_separated(func_desc),
+                )?;
+                if let Some(op) = option {
+                    write!(f, " {op}")?;
+                }
+                Ok(())
+            }
+            Statement::DropProcedure {
+                if_exists,
+                proc_desc,
+                option,
+            } => {
+                write!(
+                    f,
+                    "DROP PROCEDURE{} {}",
+                    if *if_exists { " IF EXISTS" } else { "" },
+                    display_comma_separated(proc_desc),
                 )?;
                 if let Some(op) = option {
                     write!(f, " {op}")?;
@@ -5884,12 +5910,12 @@ impl fmt::Display for DropFunctionOption {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
-pub struct DropFunctionDesc {
+pub struct DropFuncDesc {
     pub name: ObjectName,
     pub args: Option<Vec<OperateFunctionArg>>,
 }
 
-impl fmt::Display for DropFunctionDesc {
+impl fmt::Display for DropFuncDesc {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if let Some(args) = &self.args {
