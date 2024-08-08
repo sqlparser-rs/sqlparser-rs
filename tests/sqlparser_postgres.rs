@@ -3623,7 +3623,7 @@ fn parse_drop_function() {
         pg().verified_stmt(sql),
         Statement::DropFunction {
             if_exists: true,
-            func_desc: vec![DropFunctionDesc {
+            func_desc: vec![FunctionDesc {
                 name: ObjectName(vec![Ident {
                     value: "test_func".to_string(),
                     quote_style: None
@@ -3639,7 +3639,7 @@ fn parse_drop_function() {
         pg().verified_stmt(sql),
         Statement::DropFunction {
             if_exists: true,
-            func_desc: vec![DropFunctionDesc {
+            func_desc: vec![FunctionDesc {
                 name: ObjectName(vec![Ident {
                     value: "test_func".to_string(),
                     quote_style: None
@@ -3664,7 +3664,7 @@ fn parse_drop_function() {
         Statement::DropFunction {
             if_exists: true,
             func_desc: vec![
-                DropFunctionDesc {
+                FunctionDesc {
                     name: ObjectName(vec![Ident {
                         value: "test_func1".to_string(),
                         quote_style: None
@@ -3682,7 +3682,7 @@ fn parse_drop_function() {
                         }
                     ]),
                 },
-                DropFunctionDesc {
+                FunctionDesc {
                     name: ObjectName(vec![Ident {
                         value: "test_func2".to_string(),
                         quote_style: None
@@ -3713,7 +3713,7 @@ fn parse_drop_procedure() {
         pg().verified_stmt(sql),
         Statement::DropProcedure {
             if_exists: true,
-            proc_desc: vec![DropFunctionDesc {
+            proc_desc: vec![FunctionDesc {
                 name: ObjectName(vec![Ident {
                     value: "test_proc".to_string(),
                     quote_style: None
@@ -3729,7 +3729,7 @@ fn parse_drop_procedure() {
         pg().verified_stmt(sql),
         Statement::DropProcedure {
             if_exists: true,
-            proc_desc: vec![DropFunctionDesc {
+            proc_desc: vec![FunctionDesc {
                 name: ObjectName(vec![Ident {
                     value: "test_proc".to_string(),
                     quote_style: None
@@ -3754,7 +3754,7 @@ fn parse_drop_procedure() {
         Statement::DropProcedure {
             if_exists: true,
             proc_desc: vec![
-                DropFunctionDesc {
+                FunctionDesc {
                     name: ObjectName(vec![Ident {
                         value: "test_proc1".to_string(),
                         quote_style: None
@@ -3772,7 +3772,7 @@ fn parse_drop_procedure() {
                         }
                     ]),
                 },
-                DropFunctionDesc {
+                FunctionDesc {
                     name: ObjectName(vec![Ident {
                         value: "test_proc2".to_string(),
                         quote_style: None
@@ -4445,6 +4445,355 @@ fn test_table_unnest_with_ordinality() {
     }
 }
 
+fn possible_trigger_referencing_variants() -> Vec<Vec<TriggerReferencing>> {
+    vec![
+        vec![],
+        vec![TriggerReferencing {
+            refer_type: TriggerReferencingType::NewTable,
+            is_as: false,
+            transition_relation_name: ObjectName(vec![Ident::new("new_table")]),
+        }],
+        vec![TriggerReferencing {
+            refer_type: TriggerReferencingType::OldTable,
+            is_as: false,
+            transition_relation_name: ObjectName(vec![Ident::new("old_table")]),
+        }],
+        vec![
+            TriggerReferencing {
+                refer_type: TriggerReferencingType::NewTable,
+                is_as: false,
+                transition_relation_name: ObjectName(vec![Ident::new("new_table")]),
+            },
+            TriggerReferencing {
+                refer_type: TriggerReferencingType::OldTable,
+                is_as: false,
+                transition_relation_name: ObjectName(vec![Ident::new("old_table")]),
+            },
+        ],
+        vec![
+            TriggerReferencing {
+                refer_type: TriggerReferencingType::OldTable,
+                is_as: false,
+                transition_relation_name: ObjectName(vec![Ident::new("old_table")]),
+            },
+            TriggerReferencing {
+                refer_type: TriggerReferencingType::NewTable,
+                is_as: false,
+                transition_relation_name: ObjectName(vec![Ident::new("new_table")]),
+            },
+        ],
+    ]
+}
+
+fn possible_trigger_object_variants() -> Vec<TriggerObject> {
+    vec![TriggerObject::Row, TriggerObject::Statement]
+}
+
+fn possible_trigger_deferrable_variants() -> Vec<Option<ConstraintCharacteristics>> {
+    vec![
+        None,
+        Some(ConstraintCharacteristics {
+            deferrable: Some(true),
+            enforced: None,
+            initially: Some(DeferrableInitial::Deferred),
+        }),
+        Some(ConstraintCharacteristics {
+            deferrable: Some(false),
+            enforced: None,
+            initially: Some(DeferrableInitial::Immediate),
+        }),
+        Some(ConstraintCharacteristics {
+            deferrable: Some(true),
+            enforced: None,
+            initially: Some(DeferrableInitial::Immediate),
+        }),
+        Some(ConstraintCharacteristics {
+            deferrable: Some(true),
+            enforced: None,
+            initially: Some(DeferrableInitial::Deferred),
+        }),
+    ]
+}
+
+fn possible_trigger_function_descriptions() -> Vec<FunctionDesc> {
+    vec![
+        FunctionDesc {
+            name: ObjectName(vec![Ident::new("check_account_update")]),
+            args: None,
+        },
+        FunctionDesc {
+            name: ObjectName(vec![Ident::new("check_account_update")]),
+            args: Some(vec![OperateFunctionArg::unnamed(DataType::Int(None))]),
+        },
+        FunctionDesc {
+            name: ObjectName(vec![Ident::new("check_account_update")]),
+            args: Some(vec![
+                OperateFunctionArg::with_name("a", DataType::Int(None)),
+                OperateFunctionArg {
+                    mode: Some(ArgMode::In),
+                    name: Some("b".into()),
+                    data_type: DataType::Int(None),
+                    default_expr: Some(Expr::Value(Value::Number("1".parse().unwrap(), false))),
+                },
+            ]),
+        },
+    ]
+}
+
+fn possible_trigger_exec_body_types() -> Vec<TriggerExecBodyType> {
+    vec![
+        TriggerExecBodyType::Function,
+        TriggerExecBodyType::Procedure,
+    ]
+}
+
+fn possible_trigger_events() -> Vec<Vec<TriggerEvent>> {
+    vec![
+        vec![TriggerEvent::Update(vec![])],
+        vec![TriggerEvent::Insert],
+        vec![TriggerEvent::Delete],
+        vec![TriggerEvent::Update(vec![]), TriggerEvent::Insert],
+        vec![
+            TriggerEvent::Update(vec![]),
+            TriggerEvent::Insert,
+            TriggerEvent::Delete,
+        ],
+        vec![TriggerEvent::Update(vec![Ident::new("balance")])],
+        vec![
+            TriggerEvent::Update(vec![Ident::new("balance")]),
+            TriggerEvent::Insert,
+        ],
+        vec![
+            TriggerEvent::Update(vec![Ident::new("balance")]),
+            TriggerEvent::Delete,
+        ],
+        vec![
+            TriggerEvent::Update(vec![Ident::new("balance")]),
+            TriggerEvent::Insert,
+            TriggerEvent::Delete,
+        ],
+    ]
+}
+
+fn possible_referencing_table_names() -> Vec<Option<ObjectName>> {
+    vec![
+        // Case with no referencing table
+        None,
+        // Case with a referencing table
+        Some(ObjectName(vec![Ident::new("referencing_table")])),
+        // Case with a referencing table from a different schema
+        Some(ObjectName(vec![
+            Ident::new("referencing_schema"),
+            Ident::new("referencing_table"),
+        ])),
+    ]
+}
+
+fn possible_trigger_periods() -> Vec<TriggerPeriod> {
+    vec![
+        TriggerPeriod::Before,
+        TriggerPeriod::After,
+        TriggerPeriod::InsteadOf,
+    ]
+}
+
+fn possible_trigger_condition() -> Vec<Option<Expr>> {
+    vec![
+        None,
+        Some(Expr::Nested(Box::new(Expr::IsNotDistinctFrom(
+            Box::new(Expr::CompoundIdentifier(vec![
+                Ident::new("OLD"),
+                Ident::new("balance"),
+            ])),
+            Box::new(Expr::CompoundIdentifier(vec![
+                Ident::new("NEW"),
+                Ident::new("balance"),
+            ])),
+        )))),
+        Some(Expr::Nested(Box::new(Expr::IsDistinctFrom(
+            Box::new(Expr::CompoundIdentifier(vec![
+                Ident::new("OLD"),
+                Ident::new("balance"),
+            ])),
+            Box::new(Expr::CompoundIdentifier(vec![
+                Ident::new("NEW"),
+                Ident::new("balance"),
+            ])),
+        )))),
+    ]
+}
+
+type PossibleTriggerConfiguration = (
+    TriggerPeriod,
+    Vec<TriggerEvent>,
+    Option<ObjectName>,
+    Vec<TriggerReferencing>,
+    TriggerObject,
+    Option<ConstraintCharacteristics>,
+    TriggerExecBodyType,
+    FunctionDesc,
+    Option<Expr>,
+    bool, // OR REPLACE
+    bool, // EACH
+    bool, // CONSTRAINT
+);
+
+fn cartesian<F, T, V>(tuple: T, generator: F) -> impl Iterator<Item = <V as ExtendTuple<T>>::Output>
+where
+    F: Fn() -> Vec<V>,
+    V: Clone + ExtendTuple<T>,
+    T: Clone,
+{
+    generator()
+        .into_iter()
+        .map(move |v| v.extend_tuple(tuple.clone()))
+}
+
+fn iterate_trigger_configurations() -> impl Iterator<Item = PossibleTriggerConfiguration> {
+    possible_trigger_periods()
+        .into_iter()
+        .map(|period| (period,))
+        .flat_map(|period| cartesian(period, possible_trigger_events))
+        .flat_map(|prev| cartesian(prev, possible_referencing_table_names))
+        .flat_map(|prev| cartesian(prev, possible_trigger_referencing_variants))
+        .flat_map(|prev| cartesian(prev, possible_trigger_object_variants))
+        .flat_map(|prev| cartesian(prev, possible_trigger_deferrable_variants))
+        .flat_map(|prev| cartesian(prev, possible_trigger_exec_body_types))
+        .flat_map(|prev| cartesian(prev, possible_trigger_function_descriptions))
+        .flat_map(|prev| cartesian(prev, possible_trigger_condition))
+        // Whether the trigger should be replaced
+        .flat_map(|prev| cartesian(prev, || vec![true, false]))
+        // Whether the 'EACH' keyword should be included
+        .flat_map(|prev| cartesian(prev, || vec![true, false]))
+        // Whether the trigger should be a constraint
+        .flat_map(|prev| cartesian(prev, || vec![true, false]))
+}
+
+fn build_sql_from_trigger_configuration(
+    (
+        period,
+        events,
+        referenced_table_name,
+        referencing,
+        trigger_object,
+        characteristics,
+        exec_type,
+        func_desc,
+        condition,
+        or_replace,
+        include_each,
+        is_constraint,
+    ): &PossibleTriggerConfiguration,
+) -> String {
+    // First, we combine the possible events into a single string
+    // by joining them with ' OR '.
+    let events = events
+        .iter()
+        .map(|event| format!("{event}"))
+        .collect::<Vec<String>>()
+        .join(" OR ");
+
+    // When provided, we need to include the referenced table name in the statement,
+    // which is prefixed with the 'FROM' keyword.
+    let referenced_table_name = referenced_table_name
+        .as_ref()
+        .map(|referenced_table_name| format!("FROM {referenced_table_name} "))
+        .unwrap_or_default();
+
+    let characteristics = characteristics.map(|c| format!("{c} ")).unwrap_or_default();
+
+    // Next, we combine the possible referencing clauses into a single string
+    // by joining them with spaces, if there are any, and we prepend them with
+    // the 'REFERENCING' keyword.
+    let referencing = (!referencing.is_empty())
+        .then(|| {
+            format!(
+                "REFERENCING {referencing} ",
+                referencing = referencing
+                    .iter()
+                    .map(|reference| format!("{reference}",))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            )
+        })
+        .unwrap_or_default();
+
+    // In the case where a condition is provided, we prepend it with the 'WHEN' keyword.
+    let condition = condition
+        .as_ref()
+        .map(|c| format!("WHEN {c} "))
+        .unwrap_or_default();
+
+    // When requested, we prepend the 'OR REPLACE' keyword to the statement.
+    let or_replace = if *or_replace { " OR REPLACE" } else { "" };
+    // Similarly, when requested, we prepend the 'FOR EACH' keyword to the statement.
+    let for_each = if *include_each { "FOR EACH" } else { "FOR" };
+    // And, when requested, we prepend the 'CONSTRAINT' keyword to the statement.
+    let is_constraint = if *is_constraint { " CONSTRAINT" } else { "" };
+
+    // Finally, we combine all the parts into a single string,
+    // following the syntax of a postgres CREATE TRIGGER statement:
+    //
+    // CREATE [ OR REPLACE ] [ CONSTRAINT ] TRIGGER name { BEFORE | AFTER | INSTEAD OF } { event [ OR ... ] }
+    // ON table_name
+    // [ FROM referenced_table_name ]
+    // [ NOT DEFERRABLE | [ DEFERRABLE ] [ INITIALLY IMMEDIATE | INITIALLY DEFERRED ] ]
+    // [ REFERENCING { { OLD | NEW } TABLE [ AS ] transition_relation_name } [ ... ] ]
+    // [ FOR [ EACH ] { ROW | STATEMENT } ]
+    // [ WHEN ( condition ) ]
+    // EXECUTE { FUNCTION | PROCEDURE } function_name ( arguments )
+    //
+    format!(
+        "CREATE{or_replace}{is_constraint} TRIGGER check_update {period} {events} ON accounts {referenced_table_name}{characteristics}{referencing}{for_each} {trigger_object} {condition}EXECUTE {exec_type} {func_desc}"
+    )
+}
+
+fn build_trigger_from_configuration(
+    (
+        period,
+        events,
+        referenced_table_name,
+        referencing,
+        trigger_object,
+        characteristics,
+        exec_type,
+        func_desc,
+        condition,
+        or_replace,
+        include_each,
+        is_constraint,
+    ): PossibleTriggerConfiguration,
+) -> Statement {
+    Statement::CreateTrigger {
+        or_replace,
+        is_constraint,
+        name: ObjectName(vec![Ident::new("check_update")]),
+        period,
+        events,
+        table_name: ObjectName(vec![Ident::new("accounts")]),
+        referenced_table_name,
+        referencing,
+        trigger_object,
+        include_each,
+        condition,
+        exec_body: TriggerExecBody {
+            exec_type,
+            func_desc,
+        },
+        characteristics,
+    }
+}
+
+#[test]
+fn parse_create_trigger() {
+    for configuration in iterate_trigger_configurations() {
+        let sql = build_sql_from_trigger_configuration(&configuration);
+        let trigger = build_trigger_from_configuration(configuration);
+
+        assert_eq!(pg().verified_stmt(&sql), trigger);
+    }
+}
+
 #[test]
 fn test_escaped_string_literal() {
     match pg().verified_expr(r#"E'\n'"#) {
@@ -4453,6 +4802,312 @@ fn test_escaped_string_literal() {
         }
         _ => unreachable!(),
     }
+}
+
+#[test]
+/// While in the parse_create_trigger test we test the full syntax of the CREATE TRIGGER statement,
+/// here we test the invalid cases of the CREATE TRIGGER statement which should cause an appropriate
+/// error to be returned.
+fn parse_create_trigger_invalid_cases() {
+    // Test invalid cases for the CREATE TRIGGER statement
+    let invalid_cases = vec![
+        (
+            "CREATE TRIGGER check_update BEFORE UPDATE ON accounts FUNCTION check_account_update",
+            "Expected: FOR, found: FUNCTION"
+        ),
+        (
+            "CREATE TRIGGER check_update TOMORROW UPDATE ON accounts EXECUTE FUNCTION check_account_update",
+            "Expected: one of BEFORE or AFTER or INSTEAD, found: TOMORROW"
+        ),
+        (
+            "CREATE TRIGGER check_update BEFORE SAVE ON accounts EXECUTE FUNCTION check_account_update",
+            "Expected: one of INSERT or UPDATE or DELETE or TRUNCATE, found: SAVE"
+        )
+    ];
+
+    for (sql, expected_error) in invalid_cases {
+        let res = pg().parse_sql_statements(sql);
+        assert_eq!(
+            format!("sql parser error: {expected_error}"),
+            res.unwrap_err().to_string()
+        );
+    }
+}
+
+#[test]
+fn parse_drop_trigger() {
+    for if_exists in [true, false] {
+        for option in [
+            None,
+            Some(ReferentialAction::Cascade),
+            Some(ReferentialAction::Restrict),
+        ] {
+            let sql = &format!(
+                "DROP TRIGGER{} check_update ON table_name{}",
+                if if_exists { " IF EXISTS" } else { "" },
+                option
+                    .map(|o| format!(" {}", o))
+                    .unwrap_or_else(|| "".to_string())
+            );
+            assert_eq!(
+                pg().verified_stmt(sql),
+                Statement::DropTrigger {
+                    if_exists,
+                    trigger_name: ObjectName(vec![Ident::new("check_update")]),
+                    table_name: ObjectName(vec![Ident::new("table_name")]),
+                    option
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn parse_drop_trigger_invalid_cases() {
+    // Test invalid cases for the DROP TRIGGER statement
+    let invalid_cases = vec![
+        (
+            "DROP TRIGGER check_update ON table_name CASCADE RESTRICT",
+            "Expected: end of statement, found: RESTRICT",
+        ),
+        (
+            "DROP TRIGGER check_update ON table_name CASCADE CASCADE",
+            "Expected: end of statement, found: CASCADE",
+        ),
+        (
+            "DROP TRIGGER check_update ON table_name CASCADE CASCADE CASCADE",
+            "Expected: end of statement, found: CASCADE",
+        ),
+    ];
+
+    for (sql, expected_error) in invalid_cases {
+        let res = pg().parse_sql_statements(sql);
+        assert_eq!(
+            format!("sql parser error: {expected_error}"),
+            res.unwrap_err().to_string()
+        );
+    }
+}
+
+#[test]
+fn parse_trigger_related_functions() {
+    // First we define all parts of the trigger definition,
+    // including the table creation, the function creation, the trigger creation and the trigger drop.
+    // The following example is taken from the PostgreSQL documentation <https://www.postgresql.org/docs/current/plpgsql-trigger.html>
+
+    let sql_table_creation = r#"
+    CREATE TABLE emp (
+        empname           text,
+        salary            integer,
+        last_date         timestamp,
+        last_user         text
+    );
+    "#;
+
+    let sql_create_function = r#"
+    CREATE FUNCTION emp_stamp() RETURNS trigger AS $emp_stamp$
+        BEGIN
+            -- Check that empname and salary are given
+            IF NEW.empname IS NULL THEN
+                RAISE EXCEPTION 'empname cannot be null';
+            END IF;
+            IF NEW.salary IS NULL THEN
+                RAISE EXCEPTION '% cannot have null salary', NEW.empname;
+            END IF;
+    
+            -- Who works for us when they must pay for it?
+            IF NEW.salary < 0 THEN
+                RAISE EXCEPTION '% cannot have a negative salary', NEW.empname;
+            END IF;
+    
+            -- Remember who changed the payroll when
+            NEW.last_date := current_timestamp;
+            NEW.last_user := current_user;
+            RETURN NEW;
+        END;
+    $emp_stamp$ LANGUAGE plpgsql;
+    "#;
+
+    let sql_create_trigger = r#"
+    CREATE TRIGGER emp_stamp BEFORE INSERT OR UPDATE ON emp
+        FOR EACH ROW EXECUTE FUNCTION emp_stamp();
+    "#;
+
+    let sql_drop_trigger = r#"
+    DROP TRIGGER emp_stamp ON emp;
+    "#;
+
+    // Now we parse the statements and check if they are parsed correctly.
+    let mut statements = pg()
+        .parse_sql_statements(&format!(
+            "{}{}{}{}",
+            sql_table_creation, sql_create_function, sql_create_trigger, sql_drop_trigger
+        ))
+        .unwrap();
+
+    assert_eq!(statements.len(), 4);
+    let drop_trigger = statements.pop().unwrap();
+    let create_trigger = statements.pop().unwrap();
+    let create_function = statements.pop().unwrap();
+    let create_table = statements.pop().unwrap();
+
+    // Check the first statement
+    let create_table = match create_table {
+        Statement::CreateTable(create_table) => create_table,
+        _ => panic!("Expected CreateTable statement"),
+    };
+
+    assert_eq!(
+        create_table,
+        CreateTable {
+            or_replace: false,
+            temporary: false,
+            external: false,
+            global: None,
+            if_not_exists: false,
+            transient: false,
+            volatile: false,
+            name: ObjectName(vec![Ident::new("emp")]),
+            columns: vec![
+                ColumnDef {
+                    name: "empname".into(),
+                    data_type: DataType::Text,
+                    collation: None,
+                    options: vec![],
+                },
+                ColumnDef {
+                    name: "salary".into(),
+                    data_type: DataType::Integer(None),
+                    collation: None,
+                    options: vec![],
+                },
+                ColumnDef {
+                    name: "last_date".into(),
+                    data_type: DataType::Timestamp(None, TimezoneInfo::None),
+                    collation: None,
+                    options: vec![],
+                },
+                ColumnDef {
+                    name: "last_user".into(),
+                    data_type: DataType::Text,
+                    collation: None,
+                    options: vec![],
+                },
+            ],
+            constraints: vec![],
+            hive_distribution: HiveDistributionStyle::NONE,
+            hive_formats: Some(HiveFormat {
+                row_format: None,
+                serde_properties: None,
+                storage: None,
+                location: None
+            }),
+            table_properties: vec![],
+            with_options: vec![],
+            file_format: None,
+            location: None,
+            query: None,
+            without_rowid: false,
+            like: None,
+            clone: None,
+            engine: None,
+            comment: None,
+            auto_increment_offset: None,
+            default_charset: None,
+            collation: None,
+            on_commit: None,
+            on_cluster: None,
+            primary_key: None,
+            order_by: None,
+            partition_by: None,
+            cluster_by: None,
+            options: None,
+            strict: false,
+            copy_grants: false,
+            enable_schema_evolution: None,
+            change_tracking: None,
+            data_retention_time_in_days: None,
+            max_data_extension_time_in_days: None,
+            default_ddl_collation: None,
+            with_aggregation_policy: None,
+            with_row_access_policy: None,
+            with_tags: None,
+        }
+    );
+
+    // Check the second statement
+
+    assert_eq!(
+        create_function,
+        Statement::CreateFunction {
+            or_replace: false,
+            temporary: false,
+            if_not_exists: false,
+            name: ObjectName(vec![Ident::new("emp_stamp")]),
+            args: None,
+            return_type: Some(DataType::Trigger),
+            function_body: Some(
+                CreateFunctionBody::AsBeforeOptions(
+                    Expr::Value(
+                        Value::DollarQuotedString(
+                            DollarQuotedString {
+                                value: "\n        BEGIN\n            -- Check that empname and salary are given\n            IF NEW.empname IS NULL THEN\n                RAISE EXCEPTION 'empname cannot be null';\n            END IF;\n            IF NEW.salary IS NULL THEN\n                RAISE EXCEPTION '% cannot have null salary', NEW.empname;\n            END IF;\n    \n            -- Who works for us when they must pay for it?\n            IF NEW.salary < 0 THEN\n                RAISE EXCEPTION '% cannot have a negative salary', NEW.empname;\n            END IF;\n    \n            -- Remember who changed the payroll when\n            NEW.last_date := current_timestamp;\n            NEW.last_user := current_user;\n            RETURN NEW;\n        END;\n    ".to_owned(),
+                                tag: Some(
+                                    "emp_stamp".to_owned(),
+                                ),
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            behavior: None,
+            called_on_null: None,
+            parallel: None,
+            using: None,
+            language: Some(Ident::new("plpgsql")),
+            determinism_specifier: None,
+            options: None,
+            remote_connection: None
+        }
+    );
+
+    // Check the third statement
+
+    assert_eq!(
+        create_trigger,
+        Statement::CreateTrigger {
+            or_replace: false,
+            is_constraint: false,
+            name: ObjectName(vec![Ident::new("emp_stamp")]),
+            period: TriggerPeriod::Before,
+            events: vec![TriggerEvent::Insert, TriggerEvent::Update(vec![])],
+            table_name: ObjectName(vec![Ident::new("emp")]),
+            referenced_table_name: None,
+            referencing: vec![],
+            trigger_object: TriggerObject::Row,
+            include_each: true,
+            condition: None,
+            exec_body: TriggerExecBody {
+                exec_type: TriggerExecBodyType::Function,
+                func_desc: FunctionDesc {
+                    name: ObjectName(vec![Ident::new("emp_stamp")]),
+                    args: None,
+                }
+            },
+            characteristics: None
+        }
+    );
+
+    // Check the fourth statement
+    assert_eq!(
+        drop_trigger,
+        Statement::DropTrigger {
+            if_exists: false,
+            trigger_name: ObjectName(vec![Ident::new("emp_stamp")]),
+            table_name: ObjectName(vec![Ident::new("emp")]),
+            option: None
+        }
+    );
 }
 
 #[test]
