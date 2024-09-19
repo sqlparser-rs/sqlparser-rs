@@ -11,7 +11,7 @@
 // limitations under the License.
 
 use crate::ast::Statement;
-use crate::dialect::Dialect;
+use crate::dialect::{Dialect, DialectFlags};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 
@@ -22,12 +22,27 @@ use crate::parser::{Parser, ParserError};
 /// type specified, as in `CREATE TABLE t1 (a)`. In the AST, these columns will
 /// have the data type [`Unspecified`](crate::ast::DataType::Unspecified).
 #[derive(Debug)]
-pub struct SQLiteDialect {}
+pub struct SQLiteDialect(DialectFlags);
 
+impl Default for SQLiteDialect {
+    fn default() -> Self {
+        Self(DialectFlags {
+            supports_filter_during_aggregation: true,
+            supports_start_transaction_modifier: true,
+            supports_in_empty_list: true,
+            ..Default::default()
+        })
+    }
+}
+
+/// see <https://www.sqlite.org/lang_keywords.html>
+/// parse `...`, [...] and "..." as identifier
+/// TODO: support depending on the context tread '...' as identifier too.
 impl Dialect for SQLiteDialect {
-    // see https://www.sqlite.org/lang_keywords.html
-    // parse `...`, [...] and "..." as identifier
-    // TODO: support depending on the context tread '...' as identifier too.
+    fn flags(&self) -> &DialectFlags {
+        &self.0
+    }
+
     fn is_delimited_identifier_start(&self, ch: char) -> bool {
         ch == '`' || ch == '"' || ch == '['
     }
@@ -44,14 +59,6 @@ impl Dialect for SQLiteDialect {
             || ('\u{007f}'..='\u{ffff}').contains(&ch)
     }
 
-    fn supports_filter_during_aggregation(&self) -> bool {
-        true
-    }
-
-    fn supports_start_transaction_modifier(&self) -> bool {
-        true
-    }
-
     fn is_identifier_part(&self, ch: char) -> bool {
         self.is_identifier_start(ch) || ch.is_ascii_digit()
     }
@@ -63,9 +70,5 @@ impl Dialect for SQLiteDialect {
         } else {
             None
         }
-    }
-
-    fn supports_in_empty_list(&self) -> bool {
-        true
     }
 }

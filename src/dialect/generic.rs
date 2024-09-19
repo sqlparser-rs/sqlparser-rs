@@ -10,14 +10,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::dialect::Dialect;
+use crate::dialect::{Dialect, DialectFlags};
 
 /// A permissive, general purpose [`Dialect`], which parses a wide variety of SQL
 /// statements, from many different dialects.
-#[derive(Debug, Default)]
-pub struct GenericDialect;
+#[derive(Debug)]
+pub struct GenericDialect(DialectFlags);
+
+impl Default for GenericDialect {
+    fn default() -> Self {
+        Self(DialectFlags {
+            supports_unicode_string_literal: true,
+            supports_group_by_expr: true,
+            supports_connect_by: true,
+            supports_match_recognize: true,
+            supports_start_transaction_modifier: true,
+            supports_window_function_null_treatment_arg: true,
+            supports_dictionary_syntax: true,
+            supports_window_clause_named_window_reference: true,
+            supports_parenthesized_set_variables: true,
+            supports_select_wildcard_except: true,
+            support_map_literal_syntax: true,
+            allow_extract_custom: true,
+            allow_extract_single_quotes: true,
+            supports_create_index_with_clause: true,
+            ..Default::default()
+        })
+    }
+}
 
 impl Dialect for GenericDialect {
+    fn flags(&self) -> &DialectFlags {
+        &self.0
+    }
+
     fn is_delimited_identifier_start(&self, ch: char) -> bool {
         ch == '"' || ch == '`'
     }
@@ -33,61 +59,5 @@ impl Dialect for GenericDialect {
             || ch == '$'
             || ch == '#'
             || ch == '_'
-    }
-
-    fn supports_unicode_string_literal(&self) -> bool {
-        true
-    }
-
-    fn supports_group_by_expr(&self) -> bool {
-        true
-    }
-
-    fn supports_connect_by(&self) -> bool {
-        true
-    }
-
-    fn supports_match_recognize(&self) -> bool {
-        true
-    }
-
-    fn supports_start_transaction_modifier(&self) -> bool {
-        true
-    }
-
-    fn supports_window_function_null_treatment_arg(&self) -> bool {
-        true
-    }
-
-    fn supports_dictionary_syntax(&self) -> bool {
-        true
-    }
-
-    fn supports_window_clause_named_window_reference(&self) -> bool {
-        true
-    }
-
-    fn supports_parenthesized_set_variables(&self) -> bool {
-        true
-    }
-
-    fn supports_select_wildcard_except(&self) -> bool {
-        true
-    }
-
-    fn support_map_literal_syntax(&self) -> bool {
-        true
-    }
-
-    fn allow_extract_custom(&self) -> bool {
-        true
-    }
-
-    fn allow_extract_single_quotes(&self) -> bool {
-        true
-    }
-
-    fn supports_create_index_with_clause(&self) -> bool {
-        true
     }
 }

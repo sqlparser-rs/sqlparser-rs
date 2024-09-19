@@ -10,13 +10,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::dialect::Dialect;
+use crate::dialect::{Dialect, DialectFlags};
 
 // A [`Dialect`] for [ClickHouse](https://clickhouse.com/).
 #[derive(Debug)]
-pub struct ClickHouseDialect {}
+pub struct ClickHouseDialect(DialectFlags);
+
+impl Default for ClickHouseDialect {
+    fn default() -> Self {
+        Self(DialectFlags {
+            supports_string_literal_backslash_escape: true,
+            supports_select_wildcard_except: true,
+            describe_requires_table_keyword: true,
+            require_interval_qualifier: true,
+            ..Default::default()
+        })
+    }
+}
 
 impl Dialect for ClickHouseDialect {
+    fn flags(&self) -> &DialectFlags {
+        &self.0
+    }
+
     fn is_identifier_start(&self, ch: char) -> bool {
         // See https://clickhouse.com/docs/en/sql-reference/syntax/#syntax-identifiers
         ch.is_ascii_lowercase() || ch.is_ascii_uppercase() || ch == '_'
@@ -24,21 +40,5 @@ impl Dialect for ClickHouseDialect {
 
     fn is_identifier_part(&self, ch: char) -> bool {
         self.is_identifier_start(ch) || ch.is_ascii_digit()
-    }
-
-    fn supports_string_literal_backslash_escape(&self) -> bool {
-        true
-    }
-
-    fn supports_select_wildcard_except(&self) -> bool {
-        true
-    }
-
-    fn describe_requires_table_keyword(&self) -> bool {
-        true
-    }
-
-    fn require_interval_qualifier(&self) -> bool {
-        true
     }
 }

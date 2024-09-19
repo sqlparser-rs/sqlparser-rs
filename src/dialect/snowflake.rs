@@ -20,7 +20,7 @@ use crate::ast::helpers::stmt_data_loading::{
 use crate::ast::{
     CommentDef, Ident, ObjectName, RowAccessPolicy, Statement, Tag, WrappedCollection,
 };
-use crate::dialect::{Dialect, Precedence};
+use crate::dialect::{Dialect, DialectFlags, Precedence};
 use crate::keywords::Keyword;
 use crate::parser::{Parser, ParserError};
 use crate::tokenizer::Token;
@@ -32,11 +32,41 @@ use alloc::vec::Vec;
 use alloc::{format, vec};
 
 /// A [`Dialect`] for [Snowflake](https://www.snowflake.com/)
-#[derive(Debug, Default)]
-pub struct SnowflakeDialect;
+#[derive(Debug)]
+pub struct SnowflakeDialect(DialectFlags);
 
+impl Default for SnowflakeDialect {
+    fn default() -> Self {
+        Self(DialectFlags {
+            // See https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#escape_sequences
+            supports_string_literal_backslash_escape: true,
+            supports_within_after_array_aggregation: true,
+            supports_connect_by: true,
+            supports_match_recognize: true,
+            // Snowflake uses this syntax for "object constants" (the values of which
+            // are not actually required to be constants).
+            //
+            // https://docs.snowflake.com/en/sql-reference/data-types-semistructured#label-object-constant
+            supports_dictionary_syntax: true,
+            // Snowflake doesn't document this but `FIRST_VALUE(arg, { IGNORE | RESPECT } NULLS)`
+            // works (i.e. inside the argument list instead of after).
+            supports_window_function_null_treatment_arg: true,
+            // See https://docs.snowflake.com/en/sql-reference/sql/set#syntax
+            supports_parenthesized_set_variables: true,
+            describe_requires_table_keyword: true,
+            allow_extract_custom: true,
+            allow_extract_single_quotes: true,
+            ..Default::default()
+        })
+    }
+}
+
+/// see <https://docs.snowflake.com/en/sql-reference/identifiers-syntax.html>
 impl Dialect for SnowflakeDialect {
-    // see https://docs.snowflake.com/en/sql-reference/identifiers-syntax.html
+    fn flags(&self) -> &DialectFlags {
+        &self.0
+    }
+
     fn is_identifier_start(&self, ch: char) -> bool {
         ch.is_ascii_lowercase() || ch.is_ascii_uppercase() || ch == '_'
     }
@@ -51,42 +81,6 @@ impl Dialect for SnowflakeDialect {
             || ch.is_ascii_digit()
             || ch == '$'
             || ch == '_'
-    }
-
-    // See https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#escape_sequences
-    fn supports_string_literal_backslash_escape(&self) -> bool {
-        true
-    }
-
-    fn supports_within_after_array_aggregation(&self) -> bool {
-        true
-    }
-
-    fn supports_connect_by(&self) -> bool {
-        true
-    }
-
-    fn supports_match_recognize(&self) -> bool {
-        true
-    }
-
-    // Snowflake uses this syntax for "object constants" (the values of which
-    // are not actually required to be constants).
-    //
-    // https://docs.snowflake.com/en/sql-reference/data-types-semistructured#label-object-constant
-    fn supports_dictionary_syntax(&self) -> bool {
-        true
-    }
-
-    // Snowflake doesn't document this but `FIRST_VALUE(arg, { IGNORE | RESPECT } NULLS)`
-    // works (i.e. inside the argument list instead of after).
-    fn supports_window_function_null_treatment_arg(&self) -> bool {
-        true
-    }
-
-    /// See [doc](https://docs.snowflake.com/en/sql-reference/sql/set#syntax)
-    fn supports_parenthesized_set_variables(&self) -> bool {
-        true
     }
 
     fn parse_statement(&self, parser: &mut Parser) -> Option<Result<Statement, ParserError>> {
@@ -153,18 +147,6 @@ impl Dialect for SnowflakeDialect {
             Token::Colon => Some(Ok(self.prec_value(Precedence::DoubleColon))),
             _ => None,
         }
-    }
-
-    fn describe_requires_table_keyword(&self) -> bool {
-        true
-    }
-
-    fn allow_extract_custom(&self) -> bool {
-        true
-    }
-
-    fn allow_extract_single_quotes(&self) -> bool {
-        true
     }
 }
 
